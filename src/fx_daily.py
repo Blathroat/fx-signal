@@ -195,6 +195,8 @@ def down_streak(x):
         else: break
     return n
 
+MARK = {"ok": "✅", "no": "❌", "skip": "⏳"}
+
 # ---------------- 汇总 ----------------
 def build():
     now = dt.datetime.now(TZ)
@@ -331,13 +333,13 @@ def build():
         "dxy": (dxy[-1][1] if dxy else None),
         "dxy_1y_chg": ((dxy[-1][1] / dxy[0][1] - 1) * 100 if len(dxy) > 2 else None),
         "hist_date": hist_date,
-        "groups": [{"name": n, "items": items} for n, items in G],
+        "groups": [{"name": n, "items": [{"mark": MARK[mk], "name": nm, "detail": de,
+                                          "status": mk} for mk, nm, de in items]}
+                   for n, items in G],
         "score": score, "counted": counted, "total": total,
         "_series_dates": dates[-780:], "_series_vals": vals[-780:],
         "_dxy_hist": [[d, round(v, 2)] for d, v in dxy[-260:]] if dxy else [],
     }
-
-MARK = {"ok": "✅", "no": "❌", "skip": "⏳"}
 
 def text_report(s):
     L = ["💱 人民币汇率日报 · %s" % s["generated"],
