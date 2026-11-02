@@ -10,7 +10,7 @@
   python3 fx_daily.py --chart         # 生成 chart.png
   python3 fx_daily.py --chart --send  # 生成并推送图片
 """
-import json, os, re, math, sys, zipfile, subprocess, urllib.request, datetime as dt
+import json, os, re, math, sys, shutil, zipfile, subprocess, urllib.request, datetime as dt
 import xml.etree.ElementTree as ET
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +35,8 @@ def conf():
         except Exception: c = {}
     c["channel"] = os.environ.get("FX_QQ_CHANNEL") or c.get("channel") or "qqbot"
     c["target"] = os.environ.get("FX_QQ_TARGET") or c.get("target") or ""
+    c["public_dir"] = os.environ.get("FX_PUBLIC_DIR") or c.get("public_dir") or ""
+    c["public_url"] = os.environ.get("FX_PUBLIC_URL") or c.get("public_url") or ""
     return c
 
 def get_bytes(url, headers=None, timeout=25):
@@ -384,13 +386,26 @@ if __name__ == "__main__":
             render.render(CHART, s["_series_dates"], s["_series_vals"], s["settle"],
                           s["_dxy_hist"], {"strip": strip}, s["spot_date"])
             print("chart: " + CHART)
+            c = conf()
+            # 复制到静态目录，供聊天端按 URL 拉取（QQ 只接受远程 URL 图片）
+            media = CHART
+            if c.get("public_dir"):
+                try:
+                    os.makedirs(c["public_dir"], exist_ok=True)
+                    dst = os.path.join(c["public_dir"], "chart.png")
+                    shutil.copyfile(CHART, dst)
+                    os.chmod(dst, 0o644)
+                    media = dst
+                    if c.get("public_url"):
+                        media = c["public_url"].rstrip("/") + "/chart.png?t=%d" % int(dt.datetime.now().timestamp())
+                except Exception as e:
+                    print("public copy failed: %s" % e)
             if "--send" in sys.argv:
-                c = conf()
                 try:
                     r = subprocess.run(
                         ["node", "dist/index.js", "message", "send",
                          "--channel", c["channel"], "--target", c["target"],
-                         "--media", CHART, "-m", "USD/CNY 多信息走势图"],
+                         "--media", media, "-m", "USD/CNY 多信息走势图"],
                         cwd="/app", capture_output=True, text=True, timeout=120)
                     print("send: rc=%s %s" % (r.returncode, (r.stdout or r.stderr or "")[-200:]))
                 except Exception as e:
