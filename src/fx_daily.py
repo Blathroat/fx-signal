@@ -252,6 +252,13 @@ def build():
     dd = (spot / peak - 1) * 100
     months = (dt.datetime.strptime(spot_date, "%Y-%m-%d") - dt.datetime.strptime(peak_date, "%Y-%m-%d")).days / 30.44
 
+    div120 = None
+    if len(dxy) > 120 and len(vals) > 120:
+        cny120 = (vals[-1] / vals[-121] - 1) * 100
+        dxy120 = (dxy[-1][1] / dxy[-121][1] - 1) * 100 if len(dxy) >= 121 else None
+        if dxy120 is not None:
+            div120 = cny120 - dxy120
+
     same_day = bool(fixing_date and fixing_date == spot_date)
     gap = (spot / fixing - 1) * 100 if (fixing and same_day) else None
     spread = (cnh - spot) * 10000 if cnh else None
@@ -300,22 +307,31 @@ def build():
         flow.append(["skip", "结汇盘衰竭", "无数据"])
     G.append(("资金面", flow))
 
-    # --- 价格面 ---
+    # --- 价格面（回测确认：跌幅 -10%、波动率 0.8%；RSI 反向已删除） ---
     px = []
-    px.append(["ok" if dd <= -8.5 else "no", "跌幅近历史下沿",
-               "本轮 %.2f%%（历史单轮 -8%%~-12%%）" % dd])
-    px.append(["ok" if (v20 is not None and v20 < 1.0) else "no", "波动率压缩",
+    px.append(["ok" if dd <= -10.0 else "no", "跌幅近历史下沿",
+               "本轮 %.2f%%（历史单轮 -8%%~-12%%；-8%% 以浅为负期望）" % dd])
+    px.append(["ok" if (v20 is not None and v20 < 0.8) else "no", "波动率压缩",
                "20 日年化 %.2f%%（压缩后往往先破位，方向待定）" % (v20 or 0)])
-    if r14 is not None:
-        px.append(["ok" if r14 < 25 else "no", "RSI 超卖",
-                   "RSI14 %.1f，连续 %d 日下跌" % (r14, dstreak)])
-    else:
-        px.append(["skip", "RSI 超卖", "数据不足"])
-    px.append(["ok" if (m250 and spot > m250) else "no", "站上 MA250",
-               "距 MA250（%.4f）%+.2f%%" % (m250, (m250 / spot - 1) * 100) if m250 else "无"])
     G.append(("价格面", px))
 
-    flat = [x for _, items in G for x in items]
+    # --- 锚定面（新增：美元锚 = 人民币相对美元的超额升值） ---
+    an = []
+    if div120 is not None:
+        an.append(["ok" if div120 <= -4.0 else "no", "美元锚背离",
+                   "120 日人民币跑赢美元 %.1f 个百分点" % abs(div120)])
+    else:
+        an.append(["skip", "美元锚背离", "数据不足"])
+    G.append(("锚定面", an))
+
+    # --- 确认面（不计分） ---
+    cf = []
+    cf.append(["ok" if (m250 and spot > m250) else "no", "站上 MA250",
+               "距 MA250（%.4f）%+.2f%%" % (m250, (m250 / spot - 1) * 100) if m250 else "无"])
+    G.append(("确认面", cf))
+
+    counted_groups = [g for g in G if g[0] != "确认面"]
+    flat = [x for _, items in counted_groups for x in items]
     score = sum(1 for x in flat if x[0] == "ok")
     total = sum(1 for x in flat if x[0] in ("ok", "no", "skip"))
     counted = sum(1 for x in flat if x[0] in ("ok", "no"))
@@ -333,9 +349,10 @@ def build():
         "dxy": (dxy[-1][1] if dxy else None),
         "dxy_1y_chg": ((dxy[-1][1] / dxy[0][1] - 1) * 100 if len(dxy) > 2 else None),
         "hist_date": hist_date,
+        "div120": div120,
         "groups": [{"name": n, "items": [{"mark": MARK[mk], "name": nm, "detail": de,
-                                          "status": mk} for mk, nm, de in items]}
-                   for n, items in G],
+                                          "status": mk} for mk, nm, de in items],
+                    "scored": n != "确认面"} for n, items in G],
         "score": score, "counted": counted, "total": total,
         "_series_dates": dates[-780:], "_series_vals": vals[-780:],
         "_dxy_hist": [[d, round(v, 2)] for d, v in dxy[-260:]] if dxy else [],
@@ -360,9 +377,9 @@ def text_report(s):
         L.append("【结售汇】%s 差额 %.0f 亿美元" % (s["settle"][-1][0], s["settle"][-1][1]))
     L.append("")
     for g in s["groups"]:
-        L.append("【%s】" % g["name"])
-        for mk, nm, de in g["items"]:
-            L.append("%s %s｜%s" % (MARK[mk], nm, de))
+        L.append("【%s%s】" % (g["name"], "（不计分）" if g["name"] == "确认面" else ""))
+        for it in g["items"]:
+            L.append("%s %s｜%s" % (it["mark"], it["name"], it["detail"]))
     L.append("")
     L.append("【信号 %d/%d 已亮】（建议与执行由 openclaw 模型生成）" % (s["score"], s["counted"]))
     return "\n".join(L)
