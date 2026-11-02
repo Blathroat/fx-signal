@@ -1,0 +1,5 @@
+{
+  "_comment": "复制为 settings.json 后填写。channel 用 OpenClaw 的频道插件 id；target 是聊天窗口 ID（QQ 为 C2C openid）。",
+  "channel": "qqbot",
+  "target": "<YOUR_CHAT_TARGET_ID>"
+}

@@ -1,0 +1,10 @@
+# 运行时数据（含个人聊天目标与缓存）
+config/settings.json
+data/
+__pycache__/
+*.pyc
+.DS_Store
+
+# 本地临时
+.tmp/
+*.log
